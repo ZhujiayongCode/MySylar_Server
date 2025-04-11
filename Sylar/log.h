@@ -177,7 +177,30 @@ namespace Sylar
 
         /*返回格式化日志文本*/
         std::string format(std::ostream& ofs, std::shared_ptr<Logger> logger, LogLevel::Level level, LogEvent::ptr event);
+        public:
+        /*日志内容项格式化*/
+        class FormatItem{
+            public:
+            using ptr=std::shared_ptr<FormatItem>;
+            virtual ~FormatItem();
+            /**
+             * @brierf 格式化日志到流
+             * @parm[in,out] os 日志输出流
+             * @parm[in] Logger 日志器
+             * @parm[in] level 日志级别
+             * @parm[in] event 日志事件*/
+            virtual void format(std::ostream &os,std::shared_ptr<Logger>Logger,LogLevel::Level level,LogEvent::ptr event)=0;
+        };
+        /*brief 初始化，解析日志模板*/
+        void init();
+        
+        bool isError()const{return this->m_error;};
 
-    };
+        const std::string getPattern()const{return this->m_pattern;};
+        
+        private:
+        std::string m_pattern;
+        bool m_error=false;
+    };  
 }
 #endif
