@@ -19,21 +19,33 @@
 
 namespace Sylar{
     
+  /**
+   * @struct TcpServerConf
+   * @brief TCP服务器的配置结构体
+   * @details 该结构体存储了TCP服务器的各种配置信息，如地址、超时时间、SSL设置等。
+   */
   struct TcpServerConf {
     typedef std::shared_ptr<TcpServerConf> ptr;
 
     std::vector<std::string> address;
     int keepalive = 0;
+    // 超时时间，单位为毫秒
     int timeout = 1000 * 2 * 60;
     int ssl = 0;
+    // 服务器的唯一标识
     std::string id;
     /// 服务器类型，http, ws, rock
     std::string type = "http";
     std::string name;
+    // SSL 证书文件路径
     std::string cert_file;
+    // SSL 私钥文件路径
     std::string key_file;
+    // 处理连接接受的工作协程名称
     std::string accept_worker;
+    // 处理 I/O 操作的工作协程名称
     std::string io_worker;
+    // 处理业务逻辑的工作协程名称
     std::string process_worker;
     std::map<std::string, std::string> args;
 
@@ -58,6 +70,11 @@ namespace Sylar{
     }
 };
 
+/**
+ * @class LexicalCast<std::string, TcpServerConf>
+ * @brief 特化的类型转换类，用于将字符串转换为 TcpServerConf 对象
+ * @details 从 YAML 格式的字符串中解析出 TcpServerConf 配置信息。
+ */
 template<>
 class LexicalCast<std::string, TcpServerConf> {
 public:
@@ -86,6 +103,11 @@ public:
     }
 };
 
+/**
+ * @class LexicalCast<TcpServerConf, std::string>
+ * @brief 特化的类型转换类，用于将 TcpServerConf 对象转换为字符串
+ * @details 将 TcpServerConf 配置信息转换为 YAML 格式的字符串。
+ */
 template<>
 class LexicalCast<TcpServerConf, std::string> {
 public:
@@ -115,6 +137,7 @@ public:
 
 /**
  * @brief TCP服务器封装
+ * @details 该类封装了 TCP 服务器的基本功能，如绑定地址、启动和停止服务等。
  */
 class TcpServer : public std::enable_shared_from_this<TcpServer>
                     , Noncopyable {
@@ -122,8 +145,9 @@ public:
     typedef std::shared_ptr<TcpServer> ptr;
     /**
      * @brief 构造函数
-     * @param[in] worker socket客户端工作的协程调度器
-     * @param[in] accept_worker 服务器socket执行接收socket连接的协程调度器
+     * @param[in] worker socket客户端工作的协程调度器，默认为当前协程调度器
+     * @param[in] io_woker 处理 I/O 操作的协程调度器，默认为当前协程调度器
+     * @param[in] accept_worker 服务器socket执行接收socket连接的协程调度器，默认为当前协程调度器
      */
     TcpServer(Sylar::IOManager* worker = Sylar::IOManager::GetThis()
               ,Sylar::IOManager* io_woker = Sylar::IOManager::GetThis()
@@ -136,6 +160,8 @@ public:
 
     /**
      * @brief 绑定地址
+     * @param addr 需要绑定的地址
+     * @param ssl 是否使用 SSL，默认为 false
      * @return 返回是否绑定成功
      */
     virtual bool bind(Sylar::Address::ptr addr, bool ssl = false);
@@ -144,13 +170,19 @@ public:
      * @brief 绑定地址数组
      * @param[in] addrs 需要绑定的地址数组
      * @param[out] fails 绑定失败的地址
+     * @param ssl 是否使用 SSL，默认为 false
      * @return 是否绑定成功
      */
     virtual bool bind(const std::vector<Address::ptr>& addrs
                         ,std::vector<Address::ptr>& fails
                         ,bool ssl = false);
 
-    
+    /**
+     * @brief 加载 SSL 证书和私钥文件
+     * @param cert_file SSL 证书文件路径
+     * @param key_file SSL 私钥文件路径
+     * @return 是否加载成功
+     */
     bool loadCertificates(const std::string& cert_file, const std::string& key_file);
 
     /**
@@ -195,6 +227,10 @@ public:
 
     virtual std::string toString(const std::string& prefix = "");
 
+    /**
+     * @brief 获取监听的 Socket 列表
+     * @return 监听的 Socket 列表
+     */
     std::vector<Socket::ptr> getSocks() const { return m_socks;}
 protected:
 
@@ -224,8 +260,10 @@ protected:
     /// 服务是否停止
     bool m_isStop;
 
+    /// 是否使用 SSL
     bool m_ssl = false;
 
+    /// 服务器配置
     TcpServerConf::ptr m_conf;
 };
 

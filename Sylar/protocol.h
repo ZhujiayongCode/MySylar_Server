@@ -15,18 +15,39 @@
 
 namespace Sylar {
 
+/**
+ * @class Message
+ * @brief 消息类的基类，定义了消息的基本接口。
+ * @details 所有具体的消息类型都应继承自该类，并实现其纯虚函数。
+ */
 class Message {
 public:
     typedef std::shared_ptr<Message> ptr;
     enum MessageType {
-        REQUEST = 1,
-        RESPONSE = 2,
-        NOTIFY = 3
+        REQUEST = 1,  ///< 请求消息类型
+        RESPONSE = 2, ///< 响应消息类型
+        NOTIFY = 3    ///< 通知消息类型
     };
     virtual ~Message() {}
 
+    /**
+     * @brief 将消息转换为字节数组。
+     * @return 指向字节数组的智能指针。
+     */
     virtual ByteArray::ptr toByteArray();
+
+    /**
+     * @brief 将消息序列化到字节数组中。
+     * @param bytearray 指向字节数组的智能指针。
+     * @return 如果序列化成功返回 true，否则返回 false。
+     */
     virtual bool serializeToByteArray(ByteArray::ptr bytearray) = 0;
+
+    /**
+     * @brief 从字节数组中解析消息。
+     * @param bytearray 指向字节数组的智能指针。
+     * @return 如果解析成功返回 true，否则返回 false。
+     */
     virtual bool parseFromByteArray(ByteArray::ptr bytearray) = 0;
 
     virtual std::string toString() const = 0;
@@ -34,6 +55,11 @@ public:
     virtual int32_t getType() const = 0;
 };
 
+/**
+ * @class MessageDecoder
+ * @brief 消息解码器类，定义了解码和编码消息的接口。
+ * @details 用于从流中解析消息，以及将消息序列化到流中。
+ */
 class MessageDecoder {
 public:
     typedef std::shared_ptr<MessageDecoder> ptr;
@@ -58,8 +84,8 @@ public:
     virtual bool serializeToByteArray(ByteArray::ptr bytearray) override;
     virtual bool parseFromByteArray(ByteArray::ptr bytearray) override;
 protected:
-    uint32_t m_sn;
-    uint32_t m_cmd;
+    uint32_t m_sn;  ///< 请求的序列号
+    uint32_t m_cmd; ///< 请求的命令号
 };
 
 class Response : public Message {
@@ -81,10 +107,10 @@ public:
     virtual bool serializeToByteArray(ByteArray::ptr bytearray) override;
     virtual bool parseFromByteArray(ByteArray::ptr bytearray) override;
 protected:
-    uint32_t m_sn;
-    uint32_t m_cmd;
-    uint32_t m_result;
-    std::string m_resultStr;
+    uint32_t m_sn;       ///< 响应的序列号
+    uint32_t m_cmd;      ///< 响应的命令号
+    uint32_t m_result;   ///< 响应的结果码
+    std::string m_resultStr; ///< 响应的结果字符串
 };
 
 class Notify : public Message {
@@ -98,7 +124,7 @@ public:
     virtual bool serializeToByteArray(ByteArray::ptr bytearray) override;
     virtual bool parseFromByteArray(ByteArray::ptr bytearray) override;
 protected:
-    uint32_t m_notify;
+    uint32_t m_notify; ///< 通知的通知号
 };
 
 }

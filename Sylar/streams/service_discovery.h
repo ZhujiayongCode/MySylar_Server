@@ -1,3 +1,9 @@
+/**
+ * @file service_discovery.h
+ * @brief 服务发现模块的头文件，定义了服务发现相关的类和接口。
+ * @details 该模块提供了服务注册、查询和监听服务变化的功能，支持基于 ZooKeeper 的实现。
+ */
+
 #ifndef __SYLAR_STREAMS_SERVICE_DISCOVERY_H__
 #define __SYLAR_STREAMS_SERVICE_DISCOVERY_H__
 
@@ -11,6 +17,10 @@
 
 namespace Sylar {
 
+/**
+ * @class ServiceItemInfo
+ * @brief 表示一个服务项的信息，包含服务的 ID、IP、端口和附加数据。
+ */
 class ServiceItemInfo {
 public:
     typedef std::shared_ptr<ServiceItemInfo> ptr;
@@ -23,15 +33,27 @@ public:
 
     std::string toString() const;
 private:
-    uint64_t m_id;
-    uint16_t m_port;
-    std::string m_ip;
-    std::string m_data;
+    uint64_t m_id;       ///< 服务项的唯一 ID。
+    uint16_t m_port;     ///< 服务项的端口。
+    std::string m_ip;    ///< 服务项的 IP 地址。
+    std::string m_data;  ///< 服务项的附加数据。
 };
 
+/**
+ * @class IServiceDiscovery
+ * @brief 服务发现接口类，定义了服务注册、查询和监听服务变化的基本方法。
+ */
 class IServiceDiscovery {
 public:
     typedef std::shared_ptr<IServiceDiscovery> ptr;
+
+    /**
+     * @brief 服务变化回调函数类型。
+     * @param domain 服务所属的域名。
+     * @param service 服务的名称。
+     * @param old_value 服务变化前的信息。
+     * @param new_value 服务变化后的信息。
+     */
     typedef std::function<void(const std::string& domain, const std::string& service
                 ,const std::unordered_map<uint64_t, ServiceItemInfo::ptr>& old_value
                 ,const std::unordered_map<uint64_t, ServiceItemInfo::ptr>& new_value)> service_callback;
@@ -50,6 +72,11 @@ public:
     virtual void stop() = 0;
 
     service_callback getServiceCallback() const { return m_cb;}
+
+    /**
+     * @brief 设置服务变化回调函数。
+     * @param v 新的服务变化回调函数。
+     */
     void setServiceCallback(service_callback v) { m_cb = v;}
 
     void setQueryServer(const std::unordered_map<std::string, std::unordered_set<std::string> >& v);
@@ -67,6 +94,10 @@ protected:
     service_callback m_cb;
 };
 
+/**
+ * @class ZKServiceDiscovery
+ * @brief 基于 ZooKeeper 的服务发现实现类，继承自 IServiceDiscovery 接口。
+ */
 class ZKServiceDiscovery : public IServiceDiscovery
                           ,public std::enable_shared_from_this<ZKServiceDiscovery> {
 public:
@@ -95,12 +126,12 @@ private:
     bool existsOrCreate(const std::string& path);
     bool getChildren(const std::string& path);
 private:
-    std::string m_hosts;
-    std::string m_selfInfo;
-    std::string m_selfData;
-    ZKClient::ptr m_client;
-    Sylar::Timer::ptr m_timer;
-    bool m_isOnTimer = false;
+    std::string m_hosts;        ///< ZooKeeper 服务器的地址列表。
+    std::string m_selfInfo;     ///< 自身的服务信息，格式为 "ip:port"。
+    std::string m_selfData;     ///< 自身的服务附加数据。
+    ZKClient::ptr m_client;     ///< 指向 ZooKeeper 客户端的智能指针。
+    Sylar::Timer::ptr m_timer;  ///< 定时器指针。
+    bool m_isOnTimer = false;   ///< 定时器是否正在运行的标志。
 };
 
 }

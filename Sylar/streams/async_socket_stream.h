@@ -8,6 +8,12 @@
 
 namespace Sylar {
 
+/**
+ * @class AsyncSocketStream
+ * @brief 异步套接字流类，继承自 SocketStream，支持异步操作
+ * @details 该类提供了异步套接字流的基本功能，包括启动、关闭、发送和接收数据等，
+ *          同时支持自动重连和回调函数机制。
+ */
 class AsyncSocketStream : public SocketStream
                          ,public std::enable_shared_from_this<AsyncSocketStream> {
 public:
@@ -22,12 +28,16 @@ public:
     virtual void close() override;
 public:
     enum Error {
-        OK = 0,
-        TIMEOUT = -1,
-        IO_ERROR = -2,
-        NOT_CONNECT = -3,
+        OK = 0,         ///< 操作成功
+        TIMEOUT = -1,   ///< 操作超时
+        IO_ERROR = -2,  ///< 输入输出错误
+        NOT_CONNECT = -3 ///< 未连接
     };
 protected:
+    /**
+     * @struct SendCtx
+     * @brief 发送上下文的基类，用于封装发送操作的相关信息
+     */
     struct SendCtx {
     public:
         typedef std::shared_ptr<SendCtx> ptr;
@@ -36,20 +46,24 @@ protected:
         virtual bool doSend(AsyncSocketStream::ptr stream) = 0;
     };
 
+    /**
+     * @struct Ctx
+     * @brief 上下文结构，继承自 SendCtx，用于管理异步操作的状态
+     */
     struct Ctx : public SendCtx {
     public:
         typedef std::shared_ptr<Ctx> ptr;
         virtual ~Ctx() {}
         Ctx();
 
-        uint32_t sn;
-        uint32_t timeout;
-        uint32_t result;
-        bool timed;
+        uint32_t sn;        ///< 序列号
+        uint32_t timeout;   ///< 超时时间
+        uint32_t result;    ///< 操作结果
+        bool timed;         ///< 是否超时
 
-        Scheduler* scheduler;
-        Fiber::ptr fiber;
-        Timer::ptr timer;
+        Scheduler* scheduler; ///< 调度器指针
+        Fiber::ptr fiber;     ///< 协程指针
+        Timer::ptr timer;     ///< 定时器指针
 
         virtual void doRsp();
     };
@@ -115,25 +129,29 @@ protected:
     bool innerClose();
     bool waitFiber();
 protected:
-    Sylar::FiberSemaphore m_sem;
-    Sylar::FiberSemaphore m_waitSem;
-    RWMutexType m_queueMutex;
-    std::list<SendCtx::ptr> m_queue;
-    RWMutexType m_mutex;
-    std::unordered_map<uint32_t, Ctx::ptr> m_ctxs;
+    Sylar::FiberSemaphore m_sem;        ///< 协程信号量
+    Sylar::FiberSemaphore m_waitSem;    ///< 等待协程信号量
+    RWMutexType m_queueMutex;           ///< 队列互斥锁
+    std::list<SendCtx::ptr> m_queue;    ///< 发送上下文队列
+    RWMutexType m_mutex;                ///< 互斥锁
+    std::unordered_map<uint32_t, Ctx::ptr> m_ctxs; ///< 上下文映射表
 
-    uint32_t m_sn;
-    bool m_autoConnect;
-    Sylar::Timer::ptr m_timer;
-    Sylar::IOManager* m_iomanager;
-    Sylar::IOManager* m_worker;
+    uint32_t m_sn;                      ///< 序列号
+    bool m_autoConnect;                 ///< 自动重连标志
+    Sylar::Timer::ptr m_timer;          ///< 定时器指针
+    Sylar::IOManager* m_iomanager;      ///< I/O 调度器指针
+    Sylar::IOManager* m_worker;         ///< 工作调度器指针
 
-    connect_callback m_connectCb;
-    disconnect_callback m_disconnectCb;
+    connect_callback m_connectCb;       ///< 连接成功回调函数
+    disconnect_callback m_disconnectCb; ///< 断开连接回调函数
 
-    boost::any m_data;
+    boost::any m_data;                  ///< 通用数据
 };
 
+/**
+ * @class AsyncSocketStreamManager
+ * @brief 异步套接字流管理器类，用于管理多个异步套接字流
+ */
 class AsyncSocketStreamManager {
 public:
     typedef Sylar::RWMutex RWMutexType;
@@ -161,12 +179,12 @@ public:
     void setConnectCb(connect_callback v);
     void setDisconnectCb(disconnect_callback v);
 private:
-    RWMutexType m_mutex;
-    uint32_t m_size;
-    uint32_t m_idx;
-    std::vector<AsyncSocketStream::ptr> m_datas;
-    connect_callback m_connectCb;
-    disconnect_callback m_disconnectCb;
+    RWMutexType m_mutex;                ///< 互斥锁
+    uint32_t m_size;                    ///< 异步套接字流数量
+    uint32_t m_idx;                     ///< 当前索引
+    std::vector<AsyncSocketStream::ptr> m_datas; ///< 异步套接字流列表
+    connect_callback m_connectCb;       ///< 连接成功回调函数
+    disconnect_callback m_disconnectCb; ///< 断开连接回调函数
 };
 
 }
