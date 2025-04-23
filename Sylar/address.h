@@ -1,12 +1,11 @@
 /**
  * @file address.h
  * @brief 网络地址的封装(IPv4,IPv6,Unix)
- * @author Zhujiayong
- * @email zhujiayong_hhh@163.com
- * @date 2025-04-11
- * @copyright Copyright (c) 2025年 Zhujiayong All rights reserved
+ * @author Sylar.yin
+ * @email 564628276@qq.com
+ * @date 2019-06-05
+ * @copyright Copyright (c) 2019年 Sylar.yin All rights reserved (www.Sylar.top)
  */
- 
 #ifndef __SYLAR_ADDRESS_H__
 #define __SYLAR_ADDRESS_H__
 
@@ -30,7 +29,7 @@ class IPAddress;
  */
 class Address {
 public:
-    using ptr=std::shared_ptr<Address>;
+    typedef std::shared_ptr<Address> ptr;
 
     /**
      * @brief 通过sockaddr指针创建Address
@@ -59,7 +58,7 @@ public:
      * @param[in] protocol 协议,IPPROTO_TCP、IPPROTO_UDP 等
      * @return 返回满足条件的任意Address,失败返回nullptr
      */
-     Address::ptr LookupAny(const std::string& host,
+    static Address::ptr LookupAny(const std::string& host,
             int family = AF_INET, int type = 0, int protocol = 0);
     /**
      * @brief 通过host地址返回对应条件的任意IPAddress
@@ -147,7 +146,7 @@ public:
  */
 class IPAddress : public Address {
 public:
-    using ptr= std::shared_ptr<IPAddress>;
+    typedef std::shared_ptr<IPAddress> ptr;
 
     /**
      * @brief 通过域名,IP,服务器名创建IPAddress
@@ -194,7 +193,7 @@ public:
  */
 class IPv4Address : public IPAddress {
 public:
-    using ptr= std::shared_ptr<IPv4Address>;
+    typedef std::shared_ptr<IPv4Address> ptr;
 
     /**
      * @brief 使用点分十进制地址创建IPv4Address
@@ -236,7 +235,7 @@ private:
  */
 class IPv6Address : public IPAddress {
 public:
-    using ptr= std::shared_ptr<IPv6Address>;
+    typedef std::shared_ptr<IPv6Address> ptr;
     /**
      * @brief 通过IPv6地址字符串构造IPv6Address
      * @param[in] address IPv6地址字符串
@@ -280,7 +279,7 @@ private:
  */
 class UnixAddress : public Address {
 public:
-    using ptr=std::shared_ptr<UnixAddress>;
+    typedef std::shared_ptr<UnixAddress> ptr;
 
     /**
      * @brief 无参构造函数

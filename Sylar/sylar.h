@@ -38,18 +38,18 @@
 #include "util.h"
 #include "worker.h"
 
-/*#include "db/db.h"
-#include "db/mysql.h"
-#include "db/sqlite3.h"
+#include "DataBase/database.h"
+#include "DataBase/mysql.h"
+#include "DataBase/sqlite3.h"
 
-#include "ds/cache_status.h"
-#include "ds/lru_cache.h"
-#include "ds/timed_cache.h"
-#include "ds/timed_lru_cache.h"
+#include "DataStructure/cache_status.h"
+#include "DataStructure/LRU_Cache.h"
+#include "DataStructure/timed_cache.h"
+#include "DataStructure/timed_lru_cache.h"
 
-#include "email/email.h"
-#include "email/smtp.h"
-*/
+#include "EmailServer/email.h"
+#include "EmailServer/smtp.h"
+
 
 #include "HttpServer/http.h"
 #include "HttpServer/http11_common.h"
