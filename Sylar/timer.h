@@ -10,20 +10,100 @@
 
 #include <memory>
 #include <vector>
-#include <set>
+#include <list>
 #include "thread.h"
 
 namespace Sylar {
 
 class TimerManager;
+
+/**
+ * @brief 获取单调时钟时间（毫秒）
+ * @return 返回从系统启动开始计算的毫秒数
+ */
+uint64_t GetMonotonicMS();
+
+/**
+ * @brief 获取系统时钟时间（毫秒）
+ * @return 返回系统时钟的毫秒数
+ */
+uint64_t GetSystemMS();
+
+/**
+ * @brief 时间轮槽
+ */
+struct TimerSlot {
+    /// 定时器列表
+    std::list<std::shared_ptr<Timer>> timers;
+    /// 槽的过期时间
+    uint64_t expiration;
+};
+
+/**
+ * @brief 时间轮
+ */
+class TimeWheel {
+public:
+    /**
+     * @brief 构造函数
+     * @param[in] slot_size 时间轮槽数量
+     * @param[in] tick_ms 每个槽的时间间隔(毫秒)
+     */
+    TimeWheel(size_t slot_size, uint64_t tick_ms);
+
+    /**
+     * @brief 添加定时器
+     * @param[in] timer 定时器
+     * @return 是否添加成功
+     */
+    bool addTimer(std::shared_ptr<Timer> timer);
+
+    /**
+     * @brief 获取下一个定时器执行时间
+     * @return 返回距离下一个定时器执行的时间(毫秒)
+     */
+    uint64_t getNextTimer();
+
+    /**
+     * @brief 获取到期的定时器
+     * @param[out] expired 到期的定时器列表
+     */
+    void getExpiredTimers(std::vector<std::shared_ptr<Timer>>& expired);
+
+    /**
+     * @brief 清空时间轮
+     */
+    void clear();
+
+private:
+    /// 时间轮槽数量
+    size_t m_slotSize;
+    /// 每个槽的时间间隔(毫秒)
+    uint64_t m_tickMs;
+    /// 当前槽位置
+    size_t m_currentSlot;
+    /// 时间轮槽数组
+    std::vector<TimerSlot> m_slots;
+    /// 读写锁
+    RWMutex m_mutex;
+};
+
 /**
  * @brief 定时器
  */
 class Timer : public std::enable_shared_from_this<Timer> {
 friend class TimerManager;
+friend class TimeWheel;
 public:
     /// 定时器的智能指针类型
     typedef std::shared_ptr<Timer> ptr;
+
+    /**
+     * @brief 定时器比较器
+     */
+    struct Comparator {
+        bool operator()(const Timer::ptr& lhs, const Timer::ptr& rhs) const;
+    };
 
     /**
      * @brief 取消定时器
@@ -61,24 +141,12 @@ private:
     bool m_recurring = false;
     /// 执行周期，即执行的时间间隔(毫秒)，相对时间
     uint64_t m_ms = 0;
-    /// 精确的执行时间，绝对时间
+    /// 精确的执行时间，使用单调时钟
     uint64_t m_next = 0;
     /// 回调函数
     std::function<void()> m_cb;
     /// 定时器管理器
     TimerManager* m_manager = nullptr;
-private:
-    /**
-     * @brief 定时器比较仿函数
-     */
-    struct Comparator {
-        /**
-         * @brief 比较定时器的智能指针的大小(按执行时间排序)
-         * @param[in] lhs 定时器智能指针
-         * @param[in] rhs 定时器智能指针
-         */
-        bool operator()(const Timer::ptr& lhs, const Timer::ptr& rhs) const;
-    };
 };
 
 /**
@@ -148,18 +216,21 @@ protected:
     void addTimer(Timer::ptr val, RWMutexType::WriteLock& lock);
 private:
     /**
-     * @brief 检测服务器时间是否被调后了
+     * @brief 检测时间异常
+     * @return 是否检测到时间异常
      */
-    bool detectClockRollover(uint64_t now_ms);
+    bool detectTimeAnomaly();
 private:
     /// Mutex
     RWMutexType m_mutex;
-    /// 定时器集合
-    std::set<Timer::ptr, Timer::Comparator> m_timers;
+    /// 时间轮
+    TimeWheel m_timeWheel;
     /// 是否触发onTimerInsertedAtFront
     bool m_tickled = false;
-    /// 上次执行时间
-    uint64_t m_previouseTime = 0;
+    /// 上次单调时钟时间
+    uint64_t m_lastMonotonicTime = 0;
+    /// 上次系统时间
+    uint64_t m_lastSystemTime = 0;
 };
 
 }

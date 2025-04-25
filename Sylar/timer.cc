@@ -1,10 +1,94 @@
 #include "timer.h"
 #include "util.h"
+#include <time.h>
 
 namespace Sylar {
 
-bool Timer::Comparator::operator()(const Timer::ptr& lhs
-                        ,const Timer::ptr& rhs) const {
+uint64_t GetMonotonicMS() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+uint64_t GetSystemMS() {
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+TimeWheel::TimeWheel(size_t slot_size, uint64_t tick_ms)
+    : m_slotSize(slot_size)
+    , m_tickMs(tick_ms)
+    , m_currentSlot(0) {
+    m_slots.resize(slot_size);
+    for(auto& slot : m_slots) {
+        slot.expiration = 0;
+    }
+}
+
+bool TimeWheel::addTimer(std::shared_ptr<Timer> timer) {
+    RWMutex::WriteLock lock(m_mutex);
+    uint64_t now = GetMonotonicMS();
+    if(timer->m_next < now) {
+        return false;
+    }
+
+    // 计算定时器应该放在哪个槽
+    uint64_t diff = timer->m_next - now;
+    size_t ticks = diff / m_tickMs;
+    size_t slot = (m_currentSlot + ticks) % m_slotSize;
+    
+    // 设置槽的过期时间
+    m_slots[slot].expiration = timer->m_next;
+    m_slots[slot].timers.push_back(timer);
+    return true;
+}
+
+uint64_t TimeWheel::getNextTimer() {
+    RWMutex::ReadLock lock(m_mutex);
+    uint64_t now = GetMonotonicMS();
+    uint64_t next = ~0ull;
+
+    for(size_t i = 0; i < m_slotSize; ++i) {
+        size_t slot = (m_currentSlot + i) % m_slotSize;
+        if(!m_slots[slot].timers.empty()) {
+            if(m_slots[slot].expiration <= now) {
+                return 0;
+            }
+            next = std::min(next, m_slots[slot].expiration - now);
+        }
+    }
+
+    return next;
+}
+
+void TimeWheel::getExpiredTimers(std::vector<std::shared_ptr<Timer>>& expired) {
+    RWMutex::WriteLock lock(m_mutex);
+    uint64_t now = GetMonotonicMS();
+
+    while(true) {
+        auto& slot = m_slots[m_currentSlot];
+        if(slot.expiration > now) {
+            break;
+        }
+
+        expired.insert(expired.end(), slot.timers.begin(), slot.timers.end());
+        slot.timers.clear();
+        slot.expiration = 0;
+        m_currentSlot = (m_currentSlot + 1) % m_slotSize;
+    }
+}
+
+void TimeWheel::clear() {
+    RWMutex::WriteLock lock(m_mutex);
+    for(auto& slot : m_slots) {
+        slot.timers.clear();
+        slot.expiration = 0;
+    }
+    m_currentSlot = 0;
+}
+
+bool Timer::Comparator::operator()(const Timer::ptr& lhs, const Timer::ptr& rhs) const {
     if(!lhs && !rhs) {
         return false;
     }
@@ -23,14 +107,13 @@ bool Timer::Comparator::operator()(const Timer::ptr& lhs
     return lhs.get() < rhs.get();
 }
 
-
 Timer::Timer(uint64_t ms, std::function<void()> cb,
              bool recurring, TimerManager* manager)
     :m_recurring(recurring)
     ,m_ms(ms)
     ,m_cb(cb)
     ,m_manager(manager) {
-    m_next = Sylar::GetCurrentMS() + m_ms;
+    m_next = GetMonotonicMS() + m_ms;
 }
 
 Timer::Timer(uint64_t next)
@@ -41,11 +124,7 @@ bool Timer::cancel() {
     TimerManager::RWMutexType::WriteLock lock(m_manager->m_mutex);
     if(m_cb) {
         m_cb = nullptr;
-        auto it = m_manager->m_timers.find(shared_from_this());
-        if (it != m_manager->m_timers.end()) {
-            m_manager->m_timers.erase(it);
-            return true;
-        }
+        return true;
     }
     return false;
 }
@@ -55,14 +134,8 @@ bool Timer::refresh() {
     if(!m_cb) {
         return false;
     }
-    auto it = m_manager->m_timers.find(shared_from_this());
-    if(it == m_manager->m_timers.end()) {
-        return false;
-    }
-    m_manager->m_timers.erase(it);
-    m_next = Sylar::GetCurrentMS() + m_ms;
-    m_manager->m_timers.insert(shared_from_this());
-    return true;
+    m_next = GetMonotonicMS() + m_ms;
+    return m_manager->m_timeWheel.addTimer(shared_from_this());
 }
 
 bool Timer::reset(uint64_t ms, bool from_now) {
@@ -73,26 +146,21 @@ bool Timer::reset(uint64_t ms, bool from_now) {
     if(!m_cb) {
         return false;
     }
-    auto it = m_manager->m_timers.find(shared_from_this());
-    if(it == m_manager->m_timers.end()) {
-        return false;
-    }
-    m_manager->m_timers.erase(it);
     uint64_t start = 0;
     if(from_now) {
-        start = Sylar::GetCurrentMS();
+        start = GetMonotonicMS();
     } else {
         start = m_next - m_ms;
     }
     m_ms = ms;
     m_next = start + m_ms;
-    m_manager->addTimer(shared_from_this(), lock);
-    return true;
-
+    return m_manager->m_timeWheel.addTimer(shared_from_this());
 }
 
-TimerManager::TimerManager() {
-    m_previouseTime = Sylar::GetCurrentMS();
+TimerManager::TimerManager()
+    : m_timeWheel(60, 1000) {  // 60个槽，每个槽1秒
+    m_lastMonotonicTime = GetMonotonicMS();
+    m_lastSystemTime = GetSystemMS();
 }
 
 TimerManager::~TimerManager() {
@@ -122,51 +190,41 @@ Timer::ptr TimerManager::addConditionTimer(uint64_t ms, std::function<void()> cb
 uint64_t TimerManager::getNextTimer() {
     RWMutexType::ReadLock lock(m_mutex);
     m_tickled = false;
-    if(m_timers.empty()) {
-        return ~0ull;
-    }
+    return m_timeWheel.getNextTimer();
+}
 
-    const Timer::ptr& next = *m_timers.begin();
-    uint64_t now_ms = Sylar::GetCurrentMS();
-    if(now_ms >= next->m_next) {
-        return 0;
-    } else {
-        return next->m_next - now_ms;
-    }
+bool TimerManager::detectTimeAnomaly() {
+    uint64_t currentMonotonic = GetMonotonicMS();
+    uint64_t currentSystem = GetSystemMS();
+    
+    // 计算时间差
+    uint64_t monotonicDiff = currentMonotonic - m_lastMonotonicTime;
+    uint64_t systemDiff = currentSystem - m_lastSystemTime;
+    
+    // 更新上次时间
+    m_lastMonotonicTime = currentMonotonic;
+    m_lastSystemTime = currentSystem;
+    
+    // 如果时间差差异超过1秒，认为发生时间异常
+    return std::abs((int64_t)(monotonicDiff - systemDiff)) > 1000;
 }
 
 void TimerManager::listExpiredCb(std::vector<std::function<void()> >& cbs) {
-    uint64_t now_ms = Sylar::GetCurrentMS();
     std::vector<Timer::ptr> expired;
     {
-        RWMutexType::ReadLock lock(m_mutex);
-        if(m_timers.empty()) {
-            return;
-        }
-    }
-    RWMutexType::WriteLock lock(m_mutex);
-    if(m_timers.empty()) {
-        return;
-    }
-    bool rollover = detectClockRollover(now_ms);
-    if(!rollover && ((*m_timers.begin())->m_next > now_ms)) {
-        return;
+        RWMutexType::WriteLock lock(m_mutex);
+        m_timeWheel.getExpiredTimers(expired);
     }
 
-    Timer::ptr now_timer(new Timer(now_ms));
-    auto it = rollover ? m_timers.end() : m_timers.lower_bound(now_timer);
-    while(it != m_timers.end() && (*it)->m_next == now_ms) {
-        ++it;
-    }
-    expired.insert(expired.begin(), m_timers.begin(), it);
-    m_timers.erase(m_timers.begin(), it);
     cbs.reserve(expired.size());
+    uint64_t now_ms = GetMonotonicMS();
 
     for(auto& timer : expired) {
         cbs.push_back(timer->m_cb);
         if(timer->m_recurring) {
             timer->m_next = now_ms + timer->m_ms;
-            m_timers.insert(timer);
+            RWMutexType::WriteLock lock(m_mutex);
+            m_timeWheel.addTimer(timer);
         } else {
             timer->m_cb = nullptr;
         }
@@ -174,8 +232,7 @@ void TimerManager::listExpiredCb(std::vector<std::function<void()> >& cbs) {
 }
 
 void TimerManager::addTimer(Timer::ptr val, RWMutexType::WriteLock& lock) {
-    auto it = m_timers.insert(val).first;
-    bool at_front = (it == m_timers.begin()) && !m_tickled;
+    bool at_front = m_timeWheel.addTimer(val);
     if(at_front) {
         m_tickled = true;
     }
@@ -186,19 +243,9 @@ void TimerManager::addTimer(Timer::ptr val, RWMutexType::WriteLock& lock) {
     }
 }
 
-bool TimerManager::detectClockRollover(uint64_t now_ms) {
-    bool rollover = false;
-    if(now_ms < m_previouseTime &&
-            now_ms < (m_previouseTime - 60 * 60 * 1000)) {
-        rollover = true;
-    }
-    m_previouseTime = now_ms;
-    return rollover;
-}
-
 bool TimerManager::hasTimer() {
     RWMutexType::ReadLock lock(m_mutex);
-    return !m_timers.empty();
+    return m_timeWheel.getNextTimer() != ~0ull;
 }
 
 }
